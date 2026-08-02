@@ -1,0 +1,33 @@
+<Project>
+
+  <PropertyGroup>
+
+    <TargetFramework>net9.0</TargetFramework>
+
+    <Nullable>enable</Nullable>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <LangVersion>latest</LangVersion>
+
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <NoWarn>1591</NoWarn>
+
+    <Deterministic>true</Deterministic>
+
+    <InvariantGlobalization>false</InvariantGlobalization>
+
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+
+  </PropertyGroup>
+
+</Project>

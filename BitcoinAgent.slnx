@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="BitcoinAgent.Api/BitcoinAgent.Api.csproj" />
+  <Project Path="BitcoinAgent.Application/BitcoinAgent.Application.csproj" />
+  <Project Path="BitcoinAgent.Domain/BitcoinAgent.Domain.csproj" />
+  <Project Path="BitcoinAgent.Infrastructure/BitcoinAgent.Infrastructure.csproj" />
+</Solution>
