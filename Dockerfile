@@ -19,9 +19,27 @@ RUN dotnet publish "BitcoinAgent.Api/BitcoinAgent.Api.csproj" -c $CONFIGURATION 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-ENV ASPNETCORE_URLS=http://+:80
+
+# Install openssl for certificate generation
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# Create certificate directory
+RUN mkdir -p /app/certs
+
+# Generate self-signed certificate for HTTPS with SAN
+RUN openssl req -x509 -newkey rsa:2048 -keyout /app/certs/key.pem -out /app/certs/cert.pem \
+    -days 365 -nodes -subj "/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1" && \
+    openssl pkcs12 -export -out /app/certs/aspnetapp.pfx -inkey /app/certs/key.pem \
+    -in /app/certs/cert.pem -passout pass:
+
+# Set environment variables for HTTPS on port 443 (standard HTTPS)
+ENV ASPNETCORE_URLS=https://+:443
+ENV ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/aspnetapp.pfx
+ENV ASPNETCORE_Kestrel__Certificates__Default__Password=
+ENV ASPNETCORE_ENVIRONMENT=Development
 
 COPY --from=build /app/publish .
-EXPOSE 80
+EXPOSE 443
 
 ENTRYPOINT ["dotnet", "BitcoinAgent.Api.dll"]
