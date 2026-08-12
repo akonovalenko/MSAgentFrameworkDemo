@@ -91,7 +91,7 @@ public sealed class RetryMiddleware : IOrderedMiddleware
             }
             catch (Exception ex)
             {
-                this._logger.LogError(ex, "Agent execution failed after {Attempt} attempt(s).", attempt);
+                this._logger.LogInformation(ex, "Agent execution failed after {Attempt} attempt(s).", attempt);
 
                 throw;
             }

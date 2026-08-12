@@ -46,11 +46,6 @@ public sealed class LoggingMiddleware : IOrderedMiddleware
         catch
         {
             stopwatch.Stop();
-
-            // Stack trace is logged by ExceptionMiddleware.
-            this._logger.LogWarning(
-                "Agent execution failed after {Duration} ms.", stopwatch.ElapsedMilliseconds);
-
             throw;
         }
     }

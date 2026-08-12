@@ -44,13 +44,6 @@ app.UseExceptionHandler(exceptionApp =>
 
         var feature = context.Features.Get<IExceptionHandlerFeature>();
 
-        if (feature?.Error is not null)
-        {
-            logger.LogError(
-                feature.Error,
-                "Unhandled exception.");
-        }
-
         var problem = new ProblemDetails
         {
             Status = StatusCodes.Status500InternalServerError,
