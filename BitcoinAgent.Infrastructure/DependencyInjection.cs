@@ -36,8 +36,8 @@ public static class DependencyInjection
         services.Configure<OpenAIOptions>(configuration.GetSection(OpenAIOptions.SectionName));
         services.Configure<PromptValidationOptions>(configuration.GetSection(PromptValidationOptions.SectionName));
 
-        // Configure CoinGecko HTTP client
-        services.AddHttpClient<BitcoinService>((provider, client) =>
+        // Configure CoinGecko HTTP client and register IBitcoinService
+        services.AddHttpClient<IBitcoinService, BitcoinService>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<CoinGeckoOptions>>().Value;
 

@@ -1,4 +1,6 @@
-﻿namespace BitcoinAgent.Application
+﻿using Microsoft.Extensions.AI;
+
+namespace BitcoinAgent.Application
 {
     /// <summary>
     /// Represents the context for an agent's operation, including the prompt, response, cancellation token, correlation ID, and additional items.
@@ -18,5 +20,7 @@
         public int RetryAttempt { get; set; }
 
         public long UserId { get; set; }
+
+        public IReadOnlyList<ChatMessage> History { get; init; } = [];
     }
 }

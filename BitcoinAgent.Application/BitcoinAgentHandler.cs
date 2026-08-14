@@ -1,5 +1,4 @@
-﻿using BitcoinAgent.Application.Interfaces;
-using BitcoinAgent.Domain;
+﻿using BitcoinAgent.Domain;
 using BitcoinAgent.Domain.Models;
 using Microsoft.Extensions.AI;
 
@@ -12,7 +11,6 @@ public sealed class BitcoinAgentHandler
 {
     private readonly IChatClient _chatClient;
     private readonly IBitcoinTool _bitcoinTool;
-    private readonly IConversationMemory _memory;
 
     private const string SystemPrompt =
         """
@@ -29,15 +27,12 @@ public sealed class BitcoinAgentHandler
     /// Initializes a new instance of the <see cref="BitcoinAgentHandler"/> class with the specified chat client and Bitcoin tool.
     /// </summary>
     /// <param name="chatClient">The chat client.</param>
-    /// <param name="memory">The conversation memory.</param>
     /// <param name="bitcoinTool">The Bitcoin tool.</param>
     public BitcoinAgentHandler(
         IChatClient chatClient,
-        IConversationMemory memory,
         IBitcoinTool bitcoinTool)
     {
         this._chatClient = chatClient;
-        this._memory = memory;
         this._bitcoinTool = bitcoinTool;
     }
 
@@ -48,35 +43,37 @@ public sealed class BitcoinAgentHandler
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task ExecuteAsync(
-        AgentContext context,
-        CancellationToken cancellationToken)
+     AgentContext context,
+     CancellationToken cancellationToken)
     {
-
-        // Load history BEFORE saving current message
-        var history = await _memory.GetRecentMessagesAsync(20, cancellationToken);
-
-        // Save current user message
-        await _memory.AddUserMessageAsync(context.Prompt, cancellationToken);
-
         var messages = new List<ChatMessage>
         {
-            new(ChatRole.System, SystemPrompt),
-            new(ChatRole.User, context.Prompt)
+            new(ChatRole.System, SystemPrompt)
         };
 
-        messages.AddRange(history);
+        messages.AddRange(context.History);
         messages.Add(new ChatMessage(ChatRole.User, context.Prompt));
 
-        // Register the tool
+        // Register the current price tool.
         var getBitcoinPriceFunction = AIFunctionFactory.Create(
             this._bitcoinTool.GetCurrentPriceAsync,
             name: "GetCurrentBitcoinPrice",
             description: "Returns the current Bitcoin price in USD.");
 
+        // Register the historical price tool.
+        var getHistoricalBitcoinPriceFunction = AIFunctionFactory.Create(
+            this._bitcoinTool.GetHistoricalPriceAsync,
+            name: "GetHistoricalBitcoinPrice",
+            description: "Returns the Bitcoin price in USD for a specific date.");
+
         var options = new ChatOptions
         {
             Temperature = 0.2f,
-            Tools = [getBitcoinPriceFunction]
+            Tools =
+            [
+                getBitcoinPriceFunction,
+                getHistoricalBitcoinPriceFunction
+            ]
         };
 
         // ===== First request =====
@@ -86,36 +83,66 @@ public sealed class BitcoinAgentHandler
             context.Items[AgentContextKeys.TokenUsage] = response.Usage;
         }
 
-        // Check if the model requested a tool
+        // Check if the model requested a tool.
         var functionCall = response.Messages
             .SelectMany(m => m.Contents)
             .OfType<FunctionCallContent>()
             .FirstOrDefault();
 
-        // If the tool is not needed, we return a regular response
+        // If the tool is not needed, we return a regular response.
         if (functionCall is null)
         {
             context.Response = ExtractText(response) ?? "Unable to generate response.";
-            await _memory.AddAssistantMessageAsync(context.Response, cancellationToken);
             return;
         }
 
         object? toolResult;
-        // ===== run tool =====
+
+        // ===== Run tool =====
         switch (functionCall.Name)
         {
             case "GetCurrentBitcoinPrice":
                 toolResult = await _bitcoinTool.GetCurrentPriceAsync(cancellationToken);
                 context.Items[AgentContextKeys.BitcoinPriceToolResult] = toolResult;
                 break;
+
+            case "GetHistoricalBitcoinPrice":
+                {
+                    // Extract the date argument from the function call.
+                    if (!functionCall.Arguments.TryGetValue("date", out var dateValue)
+                        || dateValue is null)
+                    {
+                        context.Response =
+                            "I need a date to retrieve the historical Bitcoin price.";
+                        return;
+                    }
+
+                    if (!DateOnly.TryParse(dateValue.ToString(), out var date))
+                    {
+                        context.Response = "I could not understand the requested date.";
+                        return;
+                    }
+
+                    toolResult = await _bitcoinTool.GetHistoricalPriceAsync(
+                        date,
+                        cancellationToken);
+
+                    context.Items[AgentContextKeys.BitcoinPriceToolResult] = toolResult;
+                    break;
+                }
+
             default:
-                // The model requested an unknown tool.We don't crash, but return a user-friendly message.
-                context.Response = $"Sorry, I cannot perform the requested action because the tool {functionCall.Name} is not available.";
+                // The model requested an unknown tool. We don't crash,
+                // but return a user-friendly message.
+                context.Response =$"Sorry, I cannot perform the requested action because the tool {functionCall.Name} is not available.";
                 return;
         }
 
         messages.Add(new ChatMessage(ChatRole.Assistant, [functionCall]));
-        messages.Add(new ChatMessage(ChatRole.Tool, [new FunctionResultContent(functionCall.CallId, toolResult)]));
+        messages.Add(
+            new ChatMessage(
+                ChatRole.Tool,
+                [new FunctionResultContent(functionCall.CallId, toolResult)]));
 
         // The second request to the model is to generate the final response to the user.
         // At this stage, we no longer pass tools, otherwise some models might again
@@ -124,20 +151,23 @@ public sealed class BitcoinAgentHandler
             messages,
             new ChatOptions { Temperature = 0.2f },
             cancellationToken);
+
         if (finalResponse.Usage is not null)
         {
             context.Items[AgentContextKeys.TokenUsage] = finalResponse.Usage;
         }
 
-        context.Response = ExtractText(finalResponse) ?? toolResult?.ToString() ?? "Tool execution completed.";
-        await _memory.AddAssistantMessageAsync(context.Response, cancellationToken);
+        context.Response =
+            ExtractText(finalResponse)
+            ?? toolResult?.ToString()
+            ?? "Tool execution completed.";
     }
 
     /// <summary>
     /// Extracts the text content from a ChatResponse, concatenating all text parts if necessary.
     /// </summary>
     /// <param name="response">The chat response.</param>
-    /// <returns>The extracted text.    </returns>
+    /// <returns>The extracted text.</returns>
     private static string ExtractText(ChatResponse response)
     {
         if (!string.IsNullOrWhiteSpace(response.Text))
@@ -158,5 +188,4 @@ public sealed class BitcoinAgentHandler
 
         return string.Join("", parts);
     }
-
 }

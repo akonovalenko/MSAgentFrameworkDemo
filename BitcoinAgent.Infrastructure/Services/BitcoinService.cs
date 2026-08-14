@@ -6,7 +6,7 @@ namespace BitcoinAgent.Infrastructure.Services;
 /// <summary>
 /// Service that retrieves the current Bitcoin price from CoinGecko.
 /// </summary>
-public sealed class BitcoinService
+public sealed class BitcoinService : IBitcoinService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<BitcoinService> _logger;
@@ -34,24 +34,15 @@ public sealed class BitcoinService
 
         this._logger.LogInformation("Requesting Bitcoin price from CoinGecko.");
 
-        using var response =
-            await _httpClient.GetAsync(
-                endpoint,
-                cancellationToken);
+        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
 
         response.EnsureSuccessStatusCode();
 
-        await using var stream =
-            await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-        using var document =
-            await JsonDocument.ParseAsync(
-                stream,
-                cancellationToken: cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
-        if (!document.RootElement.TryGetProperty(
-                "bitcoin",
-                out var bitcoin))
+        if (!document.RootElement.TryGetProperty("bitcoin",out var bitcoin))
         {
             throw new InvalidOperationException("CoinGecko response does not contain 'bitcoin'.");
         }
@@ -64,6 +55,50 @@ public sealed class BitcoinService
         var price = usd.GetDecimal();
 
         this._logger.LogInformation("Bitcoin price received: {Price}", price);
+
+        return price;
+    }
+
+    /// <summary>
+    /// Returns historical Bitcoin price in USD for the specified date.
+    /// </summary>
+    /// <param name="date">Requested historical date.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Bitcoin price in USD for the specified date.</returns>
+    public async Task<decimal> GetHistoricalBitcoinPriceAsync(
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        var endpoint =$"coins/bitcoin/history?date={date:dd-MM-yyyy}";
+
+        this._logger.LogInformation("Requesting historical Bitcoin price from CoinGecko for date {Date}.", date);
+
+        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+        if (!document.RootElement.TryGetProperty("market_data", out var marketData))
+        {
+            throw new InvalidOperationException("CoinGecko response does not contain 'market_data'.");
+        }
+
+        if (!marketData.TryGetProperty("current_price", out var currentPrice))
+        {
+            throw new InvalidOperationException("CoinGecko response does not contain 'current_price'.");
+        }
+
+        if (!currentPrice.TryGetProperty("usd", out var usd))
+        {
+            throw new InvalidOperationException("CoinGecko response does not contain 'usd'.");
+        }
+
+        var price = usd.GetDecimal();
+
+        this._logger.LogInformation("Historical Bitcoin price received for {Date}: {Price}", date, price);
 
         return price;
     }

@@ -9,6 +9,9 @@ namespace BitcoinAgent.Application.Agents;
 /// </summary>
 public sealed class BitcoinAgent
 {
+    private const int RecentHistoryLimit = 20;
+    private const int HistoryPageSize = 50;
+
     private readonly IConversationMemory _memory;
     private readonly AgentPipeline _pipeline;
     private readonly BitcoinAgentHandler _handler;
@@ -41,6 +44,11 @@ public sealed class BitcoinAgent
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
 
+        // Load recent conversation history before saving the current message.
+        var history = await _memory.GetRecentMessagesAsync(
+            RecentHistoryLimit,
+            cancellationToken);
+
         // Persist the user message before processing.
         await _memory.AddUserMessageAsync(
             prompt,
@@ -50,7 +58,9 @@ public sealed class BitcoinAgent
         var context = new AgentContext
         {
             Prompt = prompt,
-            CancellationToken = cancellationToken
+            CancellationToken = cancellationToken,
+            History = history,
+            CorrelationId = Guid.NewGuid().ToString("N")
         };
 
         // Execute middleware pipeline and handler.
@@ -80,7 +90,7 @@ public sealed class BitcoinAgent
     {
         // Limit history size to avoid returning an unbounded collection.
         return _memory.GetRecentMessagesAsync(
-            50,
+            HistoryPageSize,
             cancellationToken);
     }
 
